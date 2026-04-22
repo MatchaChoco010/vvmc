@@ -1,7 +1,8 @@
 """FastAPI エントリ。
 
-- 起動時に corpus/*.txt を読んで MarkovModel を構築
-- /api/speakers, /api/sentence, /api/reset を提供
+- 起動時に corpus/<name>/*.txt をフォルダごとにまとめて MarkovModel を構築する。
+  1 フォルダ = 1 コーパス = 1 マルコフチェイン。
+- /api/corpora, /api/speakers, /api/sentence, /api/reset を提供
 - frontend/dist が存在するときは / 配下で静的配信
 """
 
@@ -30,35 +31,69 @@ VOICEVOX_URL = os.environ.get("VVMC_VOICEVOX_URL", "http://voicevox:50021")
 FRONTEND_DIST = Path(os.environ.get("VVMC_FRONTEND_DIST", "/frontend_dist"))
 
 
-def _load_corpus(corpus_dir: Path) -> str:
+def _read_text_any_encoding(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # 青空文庫の .txt は Shift_JIS(CP932) 同梱もある
+        return p.read_text(encoding="cp932", errors="replace")
+
+
+def _load_corpora(corpus_dir: Path) -> dict[str, MarkovModel]:
+    """corpus_dir 配下の各サブディレクトリを 1 コーパスとして学習。
+
+    例: corpus/akutagawa/*.txt → モデル名 "akutagawa"
+        corpus/souseki/*.txt   → モデル名 "souseki"
+    corpus_dir 直下の .txt ファイル(サブディレクトリ外)は無視する。
+    """
+    models: dict[str, MarkovModel] = {}
     if not corpus_dir.exists():
         log.warning("corpus dir %s does not exist", corpus_dir)
-        return ""
-    chunks: list[str] = []
-    for p in sorted(corpus_dir.glob("*.txt")):
-        try:
-            raw = p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            # 青空文庫の .txt は Shift_JIS 同梱もある
-            raw = p.read_text(encoding="cp932", errors="replace")
-        cleaned = clean_aozora(raw)
-        log.info("loaded corpus %s (%d chars)", p.name, len(cleaned))
-        chunks.append(cleaned)
-    return "\n".join(chunks)
+        return models
+
+    loose_txts = list(corpus_dir.glob("*.txt"))
+    if loose_txts:
+        log.warning(
+            "ignoring %d loose .txt file(s) directly under %s "
+            "(place them in a subdirectory to form a corpus)",
+            len(loose_txts),
+            corpus_dir,
+        )
+
+    subdirs = sorted(p for p in corpus_dir.iterdir() if p.is_dir())
+    for subdir in subdirs:
+        parts: list[str] = []
+        for txt in sorted(subdir.glob("*.txt")):
+            cleaned = clean_aozora(_read_text_any_encoding(txt))
+            log.info("corpus %s: +%s (%d chars)", subdir.name, txt.name, len(cleaned))
+            if cleaned:
+                parts.append(cleaned)
+        if not parts:
+            log.warning("corpus %s: no usable .txt; skipping", subdir.name)
+            continue
+        model = MarkovModel()
+        model.train("\n".join(parts))
+        models[subdir.name] = model
+        log.info(
+            "corpus %s: trained (%d head states)",
+            subdir.name,
+            len(model._transitions),
+        )
+    return models
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model = MarkovModel()
-    corpus = _load_corpus(CORPUS_DIR)
-    if corpus:
-        model.train(corpus)
-        log.info("markov model trained: %d head states", len(model._transitions))
-    else:
-        log.warning("no corpus found — /api/sentence will 503 until text is placed in %s", CORPUS_DIR)
+    corpora = _load_corpora(CORPUS_DIR)
+    if not corpora:
+        log.warning(
+            "no corpora loaded — /api/corpora will return [] "
+            "until a subdirectory with .txt files exists under %s",
+            CORPUS_DIR,
+        )
     vv = VoiceVoxClient(base_url=VOICEVOX_URL)
 
-    app.state.model = model
+    app.state.corpora = corpora
     app.state.vv = vv
     try:
         yield
@@ -71,6 +106,12 @@ app = FastAPI(title="vvmc", lifespan=lifespan)
 
 class SentenceRequest(BaseModel):
     speaker_id: int
+    corpus_name: str
+
+
+class ResetRequest(BaseModel):
+    # 省略した場合は全コーパスの乱数状態を初期化する
+    corpus_name: str | None = None
 
 
 class MoraJSON(BaseModel):
@@ -85,6 +126,20 @@ class SentenceResponse(BaseModel):
     mora: list[MoraJSON]
 
 
+def _get_model(corpus_name: str) -> MarkovModel:
+    corpora: dict[str, MarkovModel] = app.state.corpora
+    model = corpora.get(corpus_name)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"corpus not found: {corpus_name}")
+    return model
+
+
+@app.get("/api/corpora")
+async def list_corpora() -> list[str]:
+    corpora: dict[str, MarkovModel] = app.state.corpora
+    return sorted(corpora.keys())
+
+
 @app.get("/api/speakers")
 async def get_speakers():
     vv: VoiceVoxClient = app.state.vv
@@ -97,10 +152,8 @@ async def get_speakers():
 
 @app.post("/api/sentence", response_model=SentenceResponse)
 async def post_sentence(req: SentenceRequest) -> SentenceResponse:
-    model: MarkovModel = app.state.model
+    model = _get_model(req.corpus_name)
     vv: VoiceVoxClient = app.state.vv
-    if not model.is_trained:
-        raise HTTPException(status_code=503, detail="markov model not trained (corpus is empty)")
 
     text = ""
     # 稀に空文字を引く可能性があるのでリトライ
@@ -125,16 +178,20 @@ async def post_sentence(req: SentenceRequest) -> SentenceResponse:
 
 
 @app.post("/api/reset")
-async def post_reset():
-    model: MarkovModel = app.state.model
-    model.reset_state()
+async def post_reset(req: ResetRequest):
+    corpora: dict[str, MarkovModel] = app.state.corpora
+    if req.corpus_name is None:
+        for m in corpora.values():
+            m.reset_state()
+    else:
+        _get_model(req.corpus_name).reset_state()
     return JSONResponse({"ok": True})
 
 
 @app.get("/api/health")
 async def health():
-    model: MarkovModel = app.state.model
-    return {"ok": True, "markov_trained": model.is_trained}
+    corpora: dict[str, MarkovModel] = app.state.corpora
+    return {"ok": True, "corpora": sorted(corpora.keys())}
 
 
 # --- 静的配信 (frontend/dist が存在するときだけ有効) ----------------------
