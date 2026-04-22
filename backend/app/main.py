@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app.alignment import AlignInputMora, align_chars
 from app.corpus import load_corpora
 from app.markov import MarkovModel
 from app.voicevox import VoiceVoxClient
@@ -119,10 +120,19 @@ async def post_sentence(req: SentenceRequest) -> SentenceResponse:
         log.exception("synthesis failed")
         raise HTTPException(status_code=502, detail=f"voicevox synthesis failed: {e}") from e
 
+    # VoiceVox は mora をカタカナで返すので、字幕に漢字かな混じりの原文を
+    # 出せるように、fugashi で原文トークンごとの発音 mora 数を見積もって
+    # 時刻を原文 1 文字ずつに割り付け直す。
+    align_moras = [
+        AlignInputMora(text=m.text, start=m.start, end=m.end, is_pause=m.is_pause)
+        for m in result.moras
+    ]
+    char_timings = align_chars(result.text, align_moras)
+
     return SentenceResponse(
         text=result.text,
         audio=base64.b64encode(result.audio_wav).decode("ascii"),
-        mora=[MoraJSON(text=m.text, start=m.start, end=m.end) for m in result.moras],
+        mora=[MoraJSON(text=c.text, start=c.start, end=c.end) for c in char_timings],
     )
 
 

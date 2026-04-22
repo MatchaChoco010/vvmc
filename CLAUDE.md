@@ -101,7 +101,10 @@ vvmc/
 - `GET /api/corpora` … 学習済みコーパス名の一覧(サブディレクトリ名)
 - `POST /api/sentence` `{ speaker_id, corpus_name }` → `{ text: string, audio: base64 wav, mora: [...] }`
   - 1 リクエスト = 1 文。クライアントが連続して叩いてバッファを埋める。
-  - `mora` は文字と再生時間のマッピング(字幕同期用)。VoiceVox の `audio_query` の `accent_phrases` から組み立てる。
+  - `mora` は **原文 1 文字ごと** の `{text, start, end}` 列(字幕同期用)。
+    VoiceVox は mora をカタカナで返すので、fugashi の発音情報(pron)を
+    使って原文トークンごとの mora 数を見積もり、token 区間を表層文字数で
+    割り付けて漢字かな混じりの原文に時刻を対応づけている(`app/alignment.py`)。
 - `POST /api/reset` `{ corpus_name? }` … 指定コーパスの乱数状態を初期化。省略時は全コーパス。
 
 字幕同期は VoiceVox の `audio_query` が返す mora 単位の長さ情報をそのまま使う。クライアント側で時刻を見て文字を流す。

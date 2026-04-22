@@ -14,11 +14,15 @@ import httpx
 
 @dataclass
 class MoraTiming:
-    """文字 1 つと、その再生開始(start)・終了(end) 秒。"""
+    """VoiceVox の 1 mora(カタカナ)とその再生区間 [start, end] 秒。
+
+    pause_mora(句読点等のポーズ区間)は is_pause=True で区別する。
+    """
 
     text: str
     start: float
     end: float
+    is_pause: bool = False
 
 
 @dataclass
@@ -88,13 +92,17 @@ def _accent_phrases_to_moras(
             v = float(m.get("vowel_length") or 0.0) * scale
             dur = c + v
             # text は mora の「text」を使う(カタカナ 1 文字 or 拗音 2 文字)
-            out.append(MoraTiming(text=m.get("text", ""), start=t, end=t + dur))
+            out.append(
+                MoraTiming(text=m.get("text", ""), start=t, end=t + dur, is_pause=False)
+            )
             t += dur
         pause = phrase.get("pause_mora")
         if pause is not None:
             v = float(pause.get("vowel_length") or 0.0) * scale
             # 句読点のポーズ。text は空 ("" または "、/。") になることが多い。
-            out.append(MoraTiming(text=pause.get("text", "") or "", start=t, end=t + v))
+            out.append(
+                MoraTiming(text=pause.get("text", "") or "", start=t, end=t + v, is_pause=True)
+            )
             t += v
 
     # 末尾ポーズは時刻だけ進める(字幕には出さない)
