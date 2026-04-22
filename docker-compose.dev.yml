@@ -1,0 +1,35 @@
+# 開発用オーバーライド。
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# で、backend は --reload 、frontend は Vite dev server (5173) で起動する。
+# 本番の frontend-builder と frontend-dist volume も base から継承されたまま
+# 走るが、dev 時は 5173 (Vite) を使うので実害はない。
+
+services:
+  backend:
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      # 本番側の frontend-dist マウントは base から継承される。
+      # ソースの hot reload のために app/ を上書きマウント。
+      - ./backend/app:/app/app
+      - ./corpus:/corpus:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      target: build
+    working_dir: /app
+    command: ["npm", "run", "dev"]
+    environment:
+      VVMC_BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: "no"

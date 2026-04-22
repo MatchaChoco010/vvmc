@@ -1,0 +1,42 @@
+# LAN 内配信用の本番構成。
+# バックエンドが FastAPI で /api と静的ファイルの両方を 8000 で配信する。
+# voicevox engine は LAN に晒さない(ports を開けない)。
+
+services:
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-latest
+    restart: unless-stopped
+    # ports は開けない。backend からのみ到達可能。
+
+  # フロントエンドを一度ビルドして frontend-dist volume に配るだけの使い捨てサービス。
+  # backend は depends_on: service_completed_successfully で完了を待つ。
+  frontend-builder:
+    build:
+      context: ./frontend
+      target: dist
+    volumes:
+      - frontend-dist:/shared
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      VVMC_CORPUS_DIR: /corpus
+      VVMC_VOICEVOX_URL: http://voicevox:50021
+      VVMC_FRONTEND_DIST: /frontend_dist
+    volumes:
+      - frontend-dist:/frontend_dist:ro
+      - ./corpus:/corpus:ro
+    ports:
+      # 0.0.0.0 にバインドして LAN から到達可能にする
+      - "8000:8000"
+    depends_on:
+      voicevox:
+        condition: service_started
+      frontend-builder:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  frontend-dist:
