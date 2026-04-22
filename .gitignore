@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Corpus (学習元テキストはリポジトリ管理外)
+corpus/
+!corpus/.gitkeep
+
+# Docker build junk
+*.log
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
