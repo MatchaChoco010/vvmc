@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchSpeakers, type Speaker, type SpeakerStyle } from "./api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchCorpora, fetchSpeakers, type Speaker, type SpeakerStyle } from "./api";
 import { Player, type SentenceStartEvent } from "./player";
 import { Subtitle, type DisplayChar } from "./Subtitle";
 
@@ -42,13 +42,13 @@ export function App() {
   const player = useMemo(() => new Player(), []);
   const [speakers, setSpeakers] = useState<FlatStyle[] | null>(null);
   const [speakerId, setSpeakerId] = useState<number | null>(null);
+  const [corpora, setCorpora] = useState<string[] | null>(null);
+  const [corpusName, setCorpusName] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chars, setChars] = useState<DisplayChar[]>([]);
 
-  const playerRef = useRef(player);
-
-  // 話者一覧取得
+  // 話者 / コーパス一覧を取得
   useEffect(() => {
     fetchSpeakers()
       .then((data) => {
@@ -57,12 +57,23 @@ export function App() {
         if (flat.length > 0) setSpeakerId(flat[0].style.id);
       })
       .catch((e) => setError(String(e)));
+
+    fetchCorpora()
+      .then((list) => {
+        setCorpora(list);
+        if (list.length > 0) setCorpusName(list[0]);
+      })
+      .catch((e) => setError(String(e)));
   }, []);
 
-  // 話者変更 → Player に反映
+  // 選択値 → Player に反映
   useEffect(() => {
     if (speakerId !== null) player.setSpeaker(speakerId);
   }, [speakerId, player]);
+
+  useEffect(() => {
+    if (corpusName !== null) player.setCorpus(corpusName);
+  }, [corpusName, player]);
 
   // Player のハンドラを App に集約
   useEffect(() => {
@@ -75,7 +86,7 @@ export function App() {
     });
   }, [player]);
 
-  const getPlayhead = useCallback(() => playerRef.current.getVirtualPlayhead(), []);
+  const getPlayhead = useCallback(() => player.getVirtualPlayhead(), [player]);
   const onPrune = useCallback((drop: number) => {
     setChars((prev) => (prev.length > drop ? prev.slice(drop) : prev));
   }, []);
@@ -106,17 +117,36 @@ export function App() {
     setPlaying(false);
   };
 
+  const canPlay = speakerId !== null && corpusName !== null;
+  const noCorpora = corpora !== null && corpora.length === 0;
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>vvmc</h1>
         <div className="controls">
-          <label className="speaker-picker">
+          <label className="picker">
+            <span>コーパス</span>
+            <select
+              value={corpusName ?? ""}
+              onChange={(e) => setCorpusName(e.target.value)}
+              disabled={!corpora || noCorpora}
+            >
+              {corpora === null && <option>読み込み中…</option>}
+              {noCorpora && <option value="">(コーパス未配置)</option>}
+              {corpora?.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="picker">
             <span>話者</span>
             <select
               value={speakerId ?? ""}
               onChange={(e) => setSpeakerId(Number(e.target.value))}
-              disabled={!speakers || playing}
+              disabled={!speakers}
             >
               {speakers === null && <option>読み込み中…</option>}
               {speakers?.map((fs) => (
@@ -130,16 +160,27 @@ export function App() {
             type="button"
             className={playing ? "btn btn-pause" : "btn btn-play"}
             onClick={toggle}
-            disabled={speakerId === null}
+            disabled={!canPlay}
           >
             {playing ? "一時停止" : "再生開始"}
           </button>
-          <button type="button" className="btn btn-reset" onClick={reset}>
+          <button
+            type="button"
+            className="btn btn-reset"
+            onClick={reset}
+            disabled={corpusName === null}
+          >
             リセット
           </button>
         </div>
       </header>
       {error && <div className="error">{error}</div>}
+      {noCorpora && (
+        <div className="notice">
+          学習用コーパスが見つかりません。<code>corpus/&lt;名前&gt;/*.txt</code> を配置して
+          サーバを再起動してください。
+        </div>
+      )}
       <main className="app-main">
         <Subtitle chars={chars} getPlayhead={getPlayhead} onPrune={onPrune} />
       </main>

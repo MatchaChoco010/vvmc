@@ -59,7 +59,7 @@ body,
   flex: 1;
 }
 
-.speaker-picker {
+.picker {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -67,14 +67,33 @@ body,
   font-size: 13px;
 }
 
-.speaker-picker select {
+.picker select {
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 14px;
-  min-width: 200px;
+  min-width: 180px;
+}
+
+.picker select:disabled {
+  opacity: 0.5;
+}
+
+.notice {
+  background: rgba(246, 198, 90, 0.1);
+  color: #f6c65a;
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(246, 198, 90, 0.3);
+}
+
+.notice code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 .btn {

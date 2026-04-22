@@ -19,18 +19,31 @@ export async function fetchSpeakers(): Promise<Speaker[]> {
   return r.json();
 }
 
-export async function fetchSentence(speakerId: number): Promise<SentenceResponse> {
+export async function fetchCorpora(): Promise<string[]> {
+  const r = await fetch("/api/corpora");
+  if (!r.ok) throw new Error(`corpora HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function fetchSentence(
+  speakerId: number,
+  corpusName: string,
+): Promise<SentenceResponse> {
   const r = await fetch("/api/sentence", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ speaker_id: speakerId }),
+    body: JSON.stringify({ speaker_id: speakerId, corpus_name: corpusName }),
   });
   if (!r.ok) throw new Error(`sentence HTTP ${r.status}`);
   return r.json();
 }
 
-export async function resetServer(): Promise<void> {
-  const r = await fetch("/api/reset", { method: "POST" });
+export async function resetServer(corpusName?: string | null): Promise<void> {
+  const r = await fetch("/api/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corpus_name: corpusName ?? null }),
+  });
   if (!r.ok) throw new Error(`reset HTTP ${r.status}`);
 }
 

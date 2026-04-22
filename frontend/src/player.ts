@@ -33,6 +33,7 @@ type BufferedSentence = {
 export class Player {
   private readonly ctx: AudioContext;
   private speakerId = -1;
+  private corpusName: string | null = null;
   private buffer: BufferedSentence[] = [];
   private pending = 0;
   private readonly wantBuffered = 2;
@@ -58,6 +59,12 @@ export class Player {
   setSpeaker(id: number): void {
     this.speakerId = id;
     // 話者を切り替えたら、合成済みバッファは前の話者の声なので捨てる。
+    this.buffer = [];
+  }
+
+  setCorpus(name: string): void {
+    this.corpusName = name;
+    // コーパスが変わればバッファの文章も古いので捨てる。
     this.buffer = [];
   }
 
@@ -94,7 +101,8 @@ export class Player {
     this.buffer = [];
     this.virtualPlayhead = 0;
     try {
-      await resetServer();
+      // 現在選択中のコーパスのみ状態を初期化する。他のコーパスには触らない。
+      await resetServer(this.corpusName);
     } catch (e) {
       this.handlers.onError?.(e);
     }
@@ -125,13 +133,12 @@ export class Player {
 
   private refill(): void {
     if (!this.playing) return;
-    if (this.speakerId < 0) return;
+    if (this.speakerId < 0 || this.corpusName === null) return;
     while (this.buffer.length + this.pending < this.wantBuffered) {
       this.pending++;
-      this.fetchOne(this.speakerId)
+      this.fetchOne(this.speakerId, this.corpusName)
         .then((sentence) => {
           this.pending--;
-          // speaker が変わっていたら破棄
           if (this.playing) {
             this.buffer.push(sentence);
             this.maybePlay();
@@ -147,8 +154,8 @@ export class Player {
     }
   }
 
-  private async fetchOne(speakerId: number): Promise<BufferedSentence> {
-    const resp = await fetchSentence(speakerId);
+  private async fetchOne(speakerId: number, corpusName: string): Promise<BufferedSentence> {
+    const resp = await fetchSentence(speakerId, corpusName);
     const wav = base64ToArrayBuffer(resp.audio);
     const audio = await this.ctx.decodeAudioData(wav);
     return { audio, moras: resp.mora, duration: audio.duration };
