@@ -7,15 +7,21 @@
 
 ## クイックスタート
 
-学習元テキストを用意する (青空文庫の .txt を想定):
+学習元テキストを **コーパス = フォルダ** の形で用意する (青空文庫の .txt を想定):
 
 ```bash
-mkdir -p corpus
-# 例: 夏目漱石『吾輩は猫である』を配置
-curl -L -o corpus/wagahai.zip "https://www.aozora.gr.jp/cards/000148/files/789_ruby_5639.zip"
-unzip -p corpus/wagahai.zip '*.txt' | iconv -f cp932 -t utf-8 > corpus/wagahai.txt
-rm corpus/wagahai.zip
+mkdir -p corpus/wagahai
+# 例: 夏目漱石『吾輩は猫である』を "wagahai" コーパスとして配置
+curl -L -o /tmp/wagahai.zip "https://www.aozora.gr.jp/cards/000148/files/789_ruby_5639.zip"
+unzip -p /tmp/wagahai.zip '*.txt' | iconv -f cp932 -t utf-8 > corpus/wagahai/wagahai.txt
+
+# 別コーパスを足す場合は別フォルダを切る
+mkdir -p corpus/akutagawa
+# ... akutagawa 関連の .txt を配置
 ```
+
+1 フォルダ = 1 マルコフチェイン。フォルダ名がそのまま UI の選択肢になる。同じ
+フォルダに複数の .txt を置くと全部まとめて 1 つのチェインを学習する。
 
 ### 本番(LAN 配信)
 
@@ -49,8 +55,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ## API
 
 - `GET  /api/speakers`   … VoiceVox の話者一覧
-- `POST /api/sentence`   `{ speaker_id }` → `{ text, audio(base64 wav), mora[] }`
-- `POST /api/reset`      … マルコフの生成状態(乱数シード)を初期化
+- `GET  /api/corpora`    … 学習済みコーパス名の一覧
+- `POST /api/sentence`   `{ speaker_id, corpus_name }` → `{ text, audio(base64 wav), mora[] }`
+- `POST /api/reset`      `{ corpus_name? }` … 指定コーパスの乱数状態を初期化(省略で全部)
 - `GET  /api/health`     … ヘルスチェック
 
 ## ポート

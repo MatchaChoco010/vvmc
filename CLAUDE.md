@@ -27,11 +27,19 @@ VoiceVox + Markov Chain。マルコフ連鎖で生成し続けるテキストを
 
 ## マルコフ連鎖
 
-- 学習元テキストは任意のテキストファイルを差し替え可能にする。
+- **コーパス = フォルダ**。`corpus/<name>/` 配下の `.txt` を全部まとめて
+  1 つの MarkovModel を学習する。フォルダごとに独立したチェインができる。
   - 配置場所: `corpus/` ディレクトリ(リポジトリ管理外、`.gitignore` 対象)。
-  - 起動時に `corpus/*.txt` を読み込んでモデル構築。
+  - 起動時に `corpus/` の各サブディレクトリをスキャンしてモデル構築。
+  - 例: `corpus/akutagawa/*.txt` と `corpus/souseki/*.txt` があれば
+    "akutagawa" / "souseki" の 2 モデルが作られる。
+  - `corpus/` 直下に置いた `.txt` は無視する(必ずサブディレクトリに入れる)。
+- UI では複数のコーパスから 1 つ選んで切り替えできる。`/api/corpora` で一覧を返す。
 - テスト用に**青空文庫**のテキストを使う。
-  - 青空文庫テキスト特有の前処理が必要(ルビ `《》`、入力者注 `［＃...］`、傍点等の除去、底本以降の切り捨て)。前処理は `backend/preprocess.py` 相当に集約する。
+  - 青空文庫テキスト特有の前処理が必要(タイトル/著者/記号についての注意書きを
+    `----` 区切り線 2 本まで含めて落とす、ルビ `《》`、ルビ開始指定 `｜`、
+    入力者注 `［＃...］`、外字注 `※［＃...］`、底本以降の切り捨て)。
+    前処理は `backend/app/preprocess.py` に集約する。
 - 日本語の分かち書きには **fugashi + unidic-lite** を使用(pure-Python に近く apt パッケージ不要)。
 - N-gram は 2-gram(bigram)を既定とし、文末記号で文を区切る。
 
@@ -68,6 +76,8 @@ vvmc/
 │   ├── package.json
 │   └── Dockerfile         # 本番ビルド用(マルチステージで static 出力)
 ├── corpus/                # 学習元テキスト(.gitignore)
+│   ├── <name1>/*.txt      # コーパスごとにフォルダを掘る(= 1 つのチェイン)
+│   └── <name2>/*.txt
 ├── docker-compose.yml     # 本番(LAN 配信)用
 ├── docker-compose.dev.yml # 開発用(hot reload)
 └── README.md
@@ -84,10 +94,11 @@ vvmc/
 ## API 設計(暫定)
 
 - `GET /api/speakers` … VoiceVox の話者一覧をパススルー
-- `POST /api/sentence` `{ speaker_id }` → `{ text: string, audio: base64 wav, mora: [...] }`
+- `GET /api/corpora` … 学習済みコーパス名の一覧(サブディレクトリ名)
+- `POST /api/sentence` `{ speaker_id, corpus_name }` → `{ text: string, audio: base64 wav, mora: [...] }`
   - 1 リクエスト = 1 文。クライアントが連続して叩いてバッファを埋める。
   - `mora` は文字と再生時間のマッピング(字幕同期用)。VoiceVox の `audio_query` の `accent_phrases` から組み立てる。
-- `POST /api/reset` … サーバ側のマルコフ状態(直近 N-gram)を初期化
+- `POST /api/reset` `{ corpus_name? }` … 指定コーパスの乱数状態を初期化。省略時は全コーパス。
 
 字幕同期は VoiceVox の `audio_query` が返す mora 単位の長さ情報をそのまま使う。クライアント側で時刻を見て文字を流す。
 
@@ -103,7 +114,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # http://<開発機の LAN IP>:8000
 ```
 
-- `corpus/` に学習元 `.txt` を置いてから起動する。空だとマルコフが動かない。
+- `corpus/<name>/*.txt` にコーパスを置いてから起動する。空だと UI の一覧も空になる。
 - VoiceVox エンジンの初回 pull は数 GB あるので注意。
 - フロントエンドは dev サーバ(5173)で開発し、API は backend(8000)に proxy する。Vite の `server.proxy` 設定を使う。
 
