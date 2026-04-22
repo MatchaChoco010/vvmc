@@ -12,8 +12,8 @@ node_modules/
 dist/
 .vite/
 
-# Corpus (学習元テキストはリポジトリ管理外)
-corpus/
+# Corpus (学習元テキスト本体はリポジトリ管理外、ディレクトリは残す)
+corpus/*
 !corpus/.gitkeep
 
 # Docker build junk
