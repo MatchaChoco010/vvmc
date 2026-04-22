@@ -1,0 +1,189 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e0f14;
+  --fg: #e8e8ec;
+  --muted: #8a8da0;
+  --accent: #6aa3ff;
+  --accent-strong: #3b83ff;
+  --danger: #ff5a6a;
+  --panel: #1a1c23;
+  --border: #2a2d38;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.speaker-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.speaker-picker select {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+.btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-play {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-play:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.btn-pause {
+  background: #f6c65a;
+  color: #222;
+  border-color: #f6c65a;
+}
+
+.btn-reset {
+  color: var(--danger);
+  border-color: var(--border);
+}
+
+.btn-reset:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+.error {
+  background: rgba(255, 90, 106, 0.12);
+  color: var(--danger);
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 90, 106, 0.3);
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* --- 字幕 ------------------------------------------------------------ */
+.subtitle {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 1;
+  color: var(--fg);
+}
+
+.subtitle-inner {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateX(0);
+  white-space: nowrap;
+  will-change: transform;
+  translate: 0 -50%;
+}
+
+.subtitle-char {
+  display: inline-block;
+  width: 2em;
+  text-align: center;
+}
+
+/* 中央ライン (現在読まれている位置) */
+.subtitle-caret {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--accent) 30%,
+    var(--accent) 70%,
+    transparent 100%
+  );
+  transform: translateX(-50%);
+  opacity: 0.35;
+  pointer-events: none;
+}
