@@ -19,8 +19,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app.corpus import load_corpora
 from app.markov import MarkovModel
-from app.preprocess import clean_aozora
 from app.voicevox import VoiceVoxClient
 
 log = logging.getLogger("vvmc")
@@ -31,60 +31,9 @@ VOICEVOX_URL = os.environ.get("VVMC_VOICEVOX_URL", "http://voicevox:50021")
 FRONTEND_DIST = Path(os.environ.get("VVMC_FRONTEND_DIST", "/frontend_dist"))
 
 
-def _read_text_any_encoding(p: Path) -> str:
-    try:
-        return p.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        # 青空文庫の .txt は Shift_JIS(CP932) 同梱もある
-        return p.read_text(encoding="cp932", errors="replace")
-
-
-def _load_corpora(corpus_dir: Path) -> dict[str, MarkovModel]:
-    """corpus_dir 配下の各サブディレクトリを 1 コーパスとして学習。
-
-    例: corpus/akutagawa/*.txt → モデル名 "akutagawa"
-        corpus/souseki/*.txt   → モデル名 "souseki"
-    corpus_dir 直下の .txt ファイル(サブディレクトリ外)は無視する。
-    """
-    models: dict[str, MarkovModel] = {}
-    if not corpus_dir.exists():
-        log.warning("corpus dir %s does not exist", corpus_dir)
-        return models
-
-    loose_txts = list(corpus_dir.glob("*.txt"))
-    if loose_txts:
-        log.warning(
-            "ignoring %d loose .txt file(s) directly under %s "
-            "(place them in a subdirectory to form a corpus)",
-            len(loose_txts),
-            corpus_dir,
-        )
-
-    subdirs = sorted(p for p in corpus_dir.iterdir() if p.is_dir())
-    for subdir in subdirs:
-        parts: list[str] = []
-        for txt in sorted(subdir.glob("*.txt")):
-            cleaned = clean_aozora(_read_text_any_encoding(txt))
-            log.info("corpus %s: +%s (%d chars)", subdir.name, txt.name, len(cleaned))
-            if cleaned:
-                parts.append(cleaned)
-        if not parts:
-            log.warning("corpus %s: no usable .txt; skipping", subdir.name)
-            continue
-        model = MarkovModel()
-        model.train("\n".join(parts))
-        models[subdir.name] = model
-        log.info(
-            "corpus %s: trained (%d head states)",
-            subdir.name,
-            len(model._transitions),
-        )
-    return models
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    corpora = _load_corpora(CORPUS_DIR)
+    corpora = load_corpora(CORPUS_DIR)
     if not corpora:
         log.warning(
             "no corpora loaded — /api/corpora will return [] "
