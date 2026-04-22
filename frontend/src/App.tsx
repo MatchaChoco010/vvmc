@@ -85,6 +85,11 @@ export function App() {
     try {
       if (playing) {
         player.pause();
+        // まだ読まれていない「未来の」文字は落とす。現在の sentence を途中で
+        // 止めたため、それらはもう再生されない。残すと再開時にスクロールが
+        // 未来方向に引っ張られて違和感が出る。
+        const t = player.getVirtualPlayhead();
+        setChars((prev) => prev.filter((c) => c.playAt <= t));
         setPlaying(false);
       } else {
         await player.start();
