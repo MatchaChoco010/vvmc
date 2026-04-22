@@ -57,13 +57,14 @@ def test_load_corpora_mixed_encodings(tmp_path: Path) -> None:
     model = corpora["neko"]
     assert model.is_trained
     # 学習後の生成結果は乱数依存なので、両方のファイルの語彙が
-    # 遷移表に乗っているかで検証する
+    # 遷移表に乗っているかで検証する。可変次数モデルのキーは tuple なので
+    # 全長の tuple を平らに展開したトークン集合で見る。
     trans = model._transitions  # internal access: テスト目的なので許容
-    keys = set(trans.keys())
+    vocab = {tok for key in trans.keys() for tok in key}
     # UTF-8 側の語彙
-    assert "吾輩" in keys or "猫" in keys
+    assert "吾輩" in vocab or "猫" in vocab
     # CP932 側の語彙
-    assert "どこ" in keys or "生まれ" in keys
+    assert "どこ" in vocab or "生まれ" in vocab
 
 
 def test_load_corpora_missing_dir(tmp_path: Path) -> None:
