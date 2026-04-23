@@ -57,7 +57,12 @@ export class Player {
   private corpusName: string | null = null;
   private buffer: BufferedSentence[] = [];
   private pending = 0;
-  private readonly wantBuffered = 2;
+  /**
+   * バッファ目標文数。画面消灯時は Android/Chrome のバックグラウンド制限で
+   * fetch が TypeError で失敗しうる。その時にバッファを食い潰して止まる時間を
+   * 稼ぐため、少し多めに確保する (1 文 ~3-5 秒 × 4 = 十数秒の持ち時間)。
+   */
+  private readonly wantBuffered = 4;
 
   private playing = false;
   private currentAudio: HTMLAudioElement | null = null;
@@ -67,6 +72,10 @@ export class Player {
 
   private handlers: PlayerHandlers = {};
   private refillScheduled = false;
+  /** 連続 fetch 失敗回数。成功で 0 に戻す。指数バックオフの根拠。 */
+  private refillFailStreak = 0;
+  /** 次の refill retry をスケジュール済みか。重複セットを避けるため。 */
+  private refillRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.audios = [];
@@ -187,6 +196,11 @@ export class Player {
     } catch {
       /* ignore */
     }
+    if (this.refillRetryTimer !== null) {
+      clearTimeout(this.refillRetryTimer);
+      this.refillRetryTimer = null;
+    }
+    this.refillFailStreak = 0;
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
   }
 
@@ -238,6 +252,7 @@ export class Player {
       this.fetchOne(this.speakerId, this.corpusName)
         .then((sentence) => {
           this.pending--;
+          this.refillFailStreak = 0;
           if (this.playing) {
             this.buffer.push(sentence);
             this.maybePlay();
@@ -250,11 +265,35 @@ export class Player {
         })
         .catch((e) => {
           this.pending--;
-          this.handlers.onError?.(e);
-          // バックオフ
-          setTimeout(() => this.scheduleRefill(), 1000);
+          this.onRefillError(e);
         });
     }
+  }
+
+  /**
+   * refill 中の fetch 失敗ハンドリング。
+   *
+   * バックグラウンド / 画面消灯中は Chrome が進行中の fetch を abort し
+   * TypeError として表面化する。これは常態的に起きうるイベントなので、
+   * UI にはエラー表示せず指数バックオフで無限 retry する。画面が
+   * 再点灯したタイミングで fetch が通り、自然に再生が続く。
+   *
+   * onError で UI に出すのは「ネットワーク系でない明らかな異常」だけに
+   * 絞る (本来起きてはいけないもの)。
+   */
+  private onRefillError(e: unknown): void {
+    const transient = isTransientFetchError(e);
+    if (!transient) {
+      this.handlers.onError?.(e);
+    }
+    this.refillFailStreak++;
+    // 1s → 2s → 4s → 8s → 10s (上限)
+    const delay = Math.min(10000, 1000 * 2 ** (this.refillFailStreak - 1));
+    if (this.refillRetryTimer !== null) return;
+    this.refillRetryTimer = setTimeout(() => {
+      this.refillRetryTimer = null;
+      this.scheduleRefill();
+    }, delay);
   }
 
   private async fetchOne(speakerId: number, corpusName: string): Promise<BufferedSentence> {
@@ -339,6 +378,26 @@ export class Player {
 }
 
 /**
+ * ネットワーク起因の一過性エラーかどうか。
+ * バックグラウンド/画面消灯中の fetch abort は TypeError になるため、
+ * これらは UI 通知せずに静かに retry する。
+ */
+function isTransientFetchError(e: unknown): boolean {
+  if (e instanceof TypeError) return true; // "Failed to fetch" 等
+  if (e instanceof DOMException && e.name === "AbortError") return true;
+  // api.ts の throw new Error(`xxx HTTP ${status}`) — 5xx も transient 扱い
+  if (e instanceof Error) {
+    const m = /HTTP (\d{3})/.exec(e.message);
+    if (m) {
+      const code = Number(m[1]);
+      if (code >= 500 && code < 600) return true;
+      if (code === 408 || code === 429) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * WAV Blob URL の再生時間を <audio> 要素の metadata load で計測する。
  * VoiceVox が返す mora の end と実 WAV 長は厳密には一致しない可能性が
  * あるので、実ファイルから取った値を baseline 更新の基準にする。
@@ -372,9 +431,13 @@ function probeDuration(url: string): Promise<number> {
  *
  * 振幅 0 を避けているのは、ブラウザによっては完全無音を "silent" と
  * 判定して audible タブ扱いから外す可能性があるため (保険)。
+ *
+ * サンプルレートは VoiceVox の出力と同じ 24000Hz にする。Android では
+ * 最初に play した audio のレートに output stream が固定されることがあり、
+ * 8000Hz 等の低レートにすると後続の実音声が resample されて音質劣化する。
  */
 function makeKeepaliveWav(): Blob {
-  const sampleRate = 8000;
+  const sampleRate = 24000;
   const numSamples = sampleRate; // 1 秒
   const dataSize = numSamples * 2; // 16bit mono
   const buf = new ArrayBuffer(44 + dataSize);
