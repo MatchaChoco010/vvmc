@@ -57,7 +57,7 @@ VoiceVox + Markov Chain。マルコフ連鎖で生成し続けるテキストを
 | VoiceVox クライアント | httpx (async) | `audio_query` → `synthesis` の 2 段呼び出し |
 | フロントエンド | Vite + React + TypeScript | 小規模なので素の React で十分 |
 | 状態管理 | React の `useState` / `useReducer` のみ | Redux 等は導入しない |
-| 音声再生 | Web Audio API (`AudioContext` + `decodeAudioData`) | `<audio>` タグだとギャップが出やすい |
+| 音声再生 | `<audio>` 要素 (2 スロット ping-pong) | Android Chrome のバックグラウンド/画面消灯で `AudioContext` は suspend されるので Web Audio は不可。`<audio>` を 2 つ swap してギャップを埋める |
 | 配信(本番) | バックエンドの FastAPI が静的ファイルを配信 | nginx は使わない(構成簡素化) |
 
 これらは初期判断。ハマりどころが出たら CLAUDE.md ごと差し替える。
@@ -131,6 +131,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 - 読み上げ履歴の永続化(明示的要件で「履歴を持たない」)
 - HTTPS / 公開インターネット配信
 - 複数クライアントの同期再生(各自のブラウザで独立に動く)
+- PWA 化(Service Worker は音声を鳴らせず、Android のバックグラウンド再生継続には
+  寄与しない。`<audio>` 要素での再生で十分。HTTPS 必須という前提とも噛み合わない)
 
 ## メンテ規約
 
