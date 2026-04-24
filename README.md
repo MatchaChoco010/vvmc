@@ -3,6 +3,8 @@
 **V**oice**V**ox + **M**arkov **C**hain 。マルコフ連鎖で生成し続けるテキストを VoiceVox
 で延々と読み上げる、LAN 内配信用の Web アプリ。
 
+![screenshot](./image.png)
+
 設計判断 / 制約は [CLAUDE.md](./CLAUDE.md) に集約している。
 
 ## クイックスタート
